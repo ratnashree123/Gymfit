@@ -1,0 +1,14 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets
+.env
+
+# Uploads and OS/editor files
+backend/uploads/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,2 @@
+-- Development-only sample data. Added in a later phase.
+-- NEVER run this file in production.
