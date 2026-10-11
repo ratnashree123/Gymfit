@@ -1,6 +1,7 @@
 """Application settings, loaded from the .env file."""
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,7 +21,25 @@ class Settings(BaseSettings):
     frontend_origins: str = "http://127.0.0.1:5500,http://localhost:5500"
     gym_timezone: str = "Asia/Kolkata"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # Only used by the one-time create_admin script.
+    first_admin_name: str = "Gym Admin"
+    first_admin_email: str | None = None
+    first_admin_password: str | None = None
+
+    # extra="ignore": unknown keys in .env will not crash the app.
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    @field_validator("secret_key")
+    @classmethod
+    def secret_key_must_be_long(cls, value: str) -> str:
+        if len(value) < 32:
+            raise ValueError(
+                "SECRET_KEY must be at least 32 characters. Generate one with: "
+                'python -c "import secrets; print(secrets.token_hex(32))"'
+            )
+        return value
 
     @property
     def cors_origins(self) -> list[str]:

@@ -1,19 +1,26 @@
 """GymFit API entry point."""
+import logging
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app import models  # noqa: F401  (loads all models so relationships are configured)
 from app.config import get_settings
 from app.database import get_db
+from app.middleware.error_handlers import register_exception_handlers
+from app.routers import auth, staff
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 
 settings = get_settings()
 
 app = FastAPI(
     title=f"{settings.app_name} API",
     description="Gym Management System REST API",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 # Only the configured frontend origins may call this API from a browser.
@@ -24,6 +31,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+register_exception_handlers(app)
+
+app.include_router(auth.router, prefix="/api")
+app.include_router(staff.router, prefix="/api")
 
 
 @app.get("/", tags=["System"])
