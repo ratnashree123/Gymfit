@@ -62,3 +62,33 @@ class Page(BaseModel, Generic[T]):
     page: int
     page_size: int
     pages: int
+
+
+# ---------- optional fields where "" (an empty form box) means "nothing" ----------
+from pydantic import BeforeValidator  # noqa: E402
+
+
+def _blank_to_none(value):
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
+OptEmail = Annotated[Optional[EmailAddress], BeforeValidator(_blank_to_none)]
+OptPhone = Annotated[Optional[PhoneNumber], BeforeValidator(_blank_to_none)]
+OptText120 = Annotated[
+    Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]],
+    BeforeValidator(_blank_to_none),
+]
+OptText255 = Annotated[
+    Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=255)]],
+    BeforeValidator(_blank_to_none),
+]
+OptNotes = Annotated[
+    Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]],
+    BeforeValidator(_blank_to_none),
+]
+
+Gender = Literal["male", "female", "other"]
+MemberStatus = Literal["active", "inactive"]
+PlanType = Literal["membership", "addon"]
