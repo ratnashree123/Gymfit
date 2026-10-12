@@ -209,3 +209,56 @@ def billed_member(client, admin_headers, make_plan, make_member):
         return member, invoice_id
 
     return _make
+
+
+@pytest.fixture()
+def paid_member(client, admin_headers, make_plan, make_member):
+    """A member whose membership fee is fully paid, so the front desk may let them in."""
+
+    def _make(days=30, **fields):
+        number = len(client.get("/api/plans", headers=admin_headers).json())
+        plan = make_plan(f"Paid plan {number}", days, "1000")
+        member = make_member(plan_id=plan["id"], **fields)
+        invoice_id = member["current_membership"]["invoice"]["id"]
+        response = client.post(f"/api/invoices/{invoice_id}/payments", headers=admin_headers,
+                               json={"amount": "1000", "method": "cash"})
+        assert response.status_code == 201, response.text
+        return member
+
+    return _make
+
+
+@pytest.fixture()
+def add_visit(session_factory):
+    """add_visit(member_id, check_in_utc, check_out_utc=None, status=None, minutes=None) -> id
+    Writes an attendance row directly, with exact UTC times."""
+    from app.models import Attendance
+    from app.services.attendance_rules import visit_minutes
+
+    def _add(member_id, check_in, check_out=None, status=None, minutes=None):
+        with session_factory() as db:
+            visit = Attendance(
+                member_id=member_id, check_in_at=check_in, check_out_at=check_out,
+                status=status or ("inside" if check_out is None else "completed"),
+                duration_minutes=minutes if minutes is not None
+                else (visit_minutes(check_in, check_out) if check_out else None))
+            db.add(visit)
+            db.commit()
+            return visit.id
+
+    return _add
+
+
+@pytest.fixture()
+def shift_visit(session_factory):
+    """shift_visit(attendance_id, hours=0, minutes=0) pretends the member checked in that long ago."""
+    from datetime import timedelta
+    from app.models import Attendance
+    from app.models._common import utcnow
+
+    def _shift(attendance_id, hours=0, minutes=0):
+        with session_factory() as db:
+            db.get(Attendance, attendance_id).check_in_at = utcnow() - timedelta(hours=hours, minutes=minutes)
+            db.commit()
+
+    return _shift

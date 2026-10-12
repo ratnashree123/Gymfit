@@ -7,6 +7,7 @@ A full-stack gym management web app built with FastAPI, MySQL, SQLAlchemy, and v
 - Phase 2: SQLAlchemy models, bcrypt password hashing, JWT login, role-based access, staff management, audit log
 - Phase 3: members (search, filters, soft delete, photos), membership plans, assign / renew / cancel memberships
 - Phase 4: invoices (discount + tax), manual payments with partial payments, receipts, revenue reports, CSV export
+- Phase 5: check-in / check-out, access rules, who is inside, forgotten check-outs, corrections with audit trail, attendance reports
 
 ## Tech Stack
 FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · Chart.js
@@ -52,6 +53,16 @@ FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · 
 | GET | `/api/payments/{id}/receipt` and `/receipt.html` | Admin, Receptionist | Receipt data / printable receipt page |
 | GET | `/api/payments/export.csv` | Admin | CSV download for a date range |
 | GET | `/api/reports/revenue` | Admin | Daily, monthly or yearly revenue (chart-ready) |
+| GET | `/api/attendance/lookup?search=` | Admin, Receptionist | Desk search: is the member inside, may they enter? |
+| POST | `/api/attendance/check-in` | Admin, Receptionist | Check a member in (Admin may override a refusal with a reason) |
+| POST | `/api/attendance/check-out` | Admin, Receptionist | Check a member out, records the visit length |
+| GET | `/api/attendance/inside` | staff (trainers: own members) | Who is inside right now |
+| GET | `/api/attendance` | staff (trainers: own members) | History by member, status, day / week / month or date range |
+| GET | `/api/attendance/report` | Admin, Receptionist | Visits, unique members, average stay, peak hour / day |
+| GET | `/api/attendance/export.csv` | Admin | CSV download for a date range |
+| POST | `/api/attendance/close-stale` | Admin, Receptionist | Close visits nobody checked out |
+| PATCH | `/api/attendance/{id}` | Admin | Correct times (reason required, old values audited) |
+| POST | `/api/attendance/{id}/remove` | Admin | Remove a mistaken check-in (kept in the audit log) |
 
 ## Membership rules
 - A membership is valid on its start and end date (both included): a 30-day plan starting 1 Jan ends 30 Jan.
@@ -69,6 +80,14 @@ FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · 
 - Payments are never edited or deleted. Refunds are not supported yet, so a membership or invoice that has payments cannot be cancelled.
 - Receptionists can give at most 10% discount (setting `max_receptionist_discount_percent`); Admins have no limit.
 - Reports group by the gym's local dates, and CSV cells that start with `= + - @` are neutralised against spreadsheet formula injection.
+
+## Attendance rules
+- Entry needs: an active member, a membership covering today (plus `grace_period_days`), and a fully paid membership fee unless `allow_checkin_unpaid` is on. A free plan has no fee to pay.
+- Check-in and check-out times always come from the server clock, never from the client.
+- A member can have only ONE open visit. The database enforces it (unique index), not just the code, so two desks clicking at once cannot create a duplicate.
+- A visit still open after `auto_checkout_hours` (default 8) is a forgotten check-out: it is closed as `auto_closed` (the stay is capped at that many hours) the next time the member checks in, or by `close-stale`. Auto-closed visits are left out of the average stay.
+- Only an Admin can override a refused check-in (reason required) or correct / remove a record. Corrections are saved with the old values in `audit_logs`.
+- Times typed in a correction without an offset are read as the gym's local time; reports group by local dates (a 00:30 visit counts on the new day).
 
 ## Who can see what
 - Receptionist: register and edit members, but never sees medical notes.

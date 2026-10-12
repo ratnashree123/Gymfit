@@ -24,3 +24,14 @@ def utc_to_local_date(value: datetime, tz: ZoneInfo) -> date:
 
 def format_local(value: datetime, tz: ZoneInfo, fmt: str = "%d %b %Y, %I:%M %p") -> str:
     return utc_to_local(value, tz).strftime(fmt)
+
+
+def to_utc_naive(value: datetime, tz: ZoneInfo) -> datetime:
+    """A time typed by staff -> naive UTC for the database.
+
+    A time WITH an offset (2026-03-10T10:00:00+05:30 or ...Z) is converted exactly.
+    A time WITHOUT an offset is taken as the gym's local time.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=tz)
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
