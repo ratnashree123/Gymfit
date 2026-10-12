@@ -74,6 +74,8 @@ def _blank_to_none(value):
     return value
 
 
+blank_to_none = _blank_to_none
+
 OptEmail = Annotated[Optional[EmailAddress], BeforeValidator(_blank_to_none)]
 OptPhone = Annotated[Optional[PhoneNumber], BeforeValidator(_blank_to_none)]
 OptText120 = Annotated[

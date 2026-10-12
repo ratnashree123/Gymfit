@@ -164,3 +164,48 @@ def make_member(client, admin_headers):
         return response.json()
 
     return _make
+
+
+@pytest.fixture()
+def set_setting(session_factory):
+    """set_setting("tax_percent", "18") changes a gym setting for one test."""
+    from app.models import GymSetting
+
+    def _set(key, value):
+        with session_factory() as db:
+            row = db.get(GymSetting, key)
+            if row is not None:
+                row.setting_value = value
+            else:
+                db.add(GymSetting(setting_key=key, setting_value=value))
+            db.commit()
+
+    return _set
+
+
+@pytest.fixture()
+def backdate_invoice(session_factory):
+    """backdate_invoice(invoice_id, days) moves the due date into the past."""
+    from datetime import timedelta
+    from app.models import Invoice
+    from app.utils.dates import gym_today
+
+    def _backdate(invoice_id, days=3):
+        with session_factory() as db:
+            db.get(Invoice, invoice_id).due_date = gym_today() - timedelta(days=days)
+            db.commit()
+
+    return _backdate
+
+
+@pytest.fixture()
+def billed_member(client, admin_headers, make_plan, make_member):
+    """A member with a 1500.00 monthly membership. Returns (member, invoice_id)."""
+
+    def _make(price="1500", **member_fields):
+        plan = make_plan(f"Plan {price} {len(client.get('/api/plans', headers=admin_headers).json())}", 30, price)
+        member = make_member(plan_id=plan["id"], **member_fields)
+        invoice_id = member["current_membership"]["invoice"]["id"]
+        return member, invoice_id
+
+    return _make

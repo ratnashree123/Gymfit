@@ -109,3 +109,4 @@ class Payment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     invoice: Mapped["Invoice"] = relationship(back_populates="payments")
+    receiver: Mapped[Optional["User"]] = relationship(foreign_keys="Payment.received_by")

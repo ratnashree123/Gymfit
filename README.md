@@ -6,6 +6,7 @@ A full-stack gym management web app built with FastAPI, MySQL, SQLAlchemy, and v
 - Phase 1: project setup, architecture, database design (17 tables)
 - Phase 2: SQLAlchemy models, bcrypt password hashing, JWT login, role-based access, staff management, audit log
 - Phase 3: members (search, filters, soft delete, photos), membership plans, assign / renew / cancel memberships
+- Phase 4: invoices (discount + tax), manual payments with partial payments, receipts, revenue reports, CSV export
 
 ## Tech Stack
 FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · Chart.js
@@ -42,6 +43,15 @@ FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · 
 | POST | `/api/members/{id}/renew` | Admin, Receptionist | Renew (no lost days) |
 | POST | `/api/members/{id}/memberships/{mid}/cancel` | Admin | Cancel a membership |
 | POST/GET/DELETE | `/api/members/{id}/photo` | staff | Private profile photo (JPEG/PNG/WEBP, max 2 MB) |
+| GET/POST | `/api/invoices` | Admin, Receptionist | List / search / overdue filter; create personal-training or one-off bills |
+| GET | `/api/invoices/summary` | Admin, Receptionist | Money still owed (per member or everyone) |
+| GET | `/api/invoices/{id}` | Admin, Receptionist | Invoice with its payments |
+| POST | `/api/invoices/{id}/payments` | Admin, Receptionist | Record a payment (cash, UPI, card, bank transfer) |
+| POST | `/api/invoices/{id}/cancel` | Admin | Cancel a one-off invoice that has no payments |
+| GET | `/api/payments` | Admin, Receptionist | Payment history: search by member, date, receipt / transaction id |
+| GET | `/api/payments/{id}/receipt` and `/receipt.html` | Admin, Receptionist | Receipt data / printable receipt page |
+| GET | `/api/payments/export.csv` | Admin | CSV download for a date range |
+| GET | `/api/reports/revenue` | Admin | Daily, monthly or yearly revenue (chart-ready) |
 
 ## Membership rules
 - A membership is valid on its start and end date (both included): a 30-day plan starting 1 Jan ends 30 Jan.
@@ -49,6 +59,16 @@ FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · 
 - Overlapping periods are rejected; cancelled memberships are ignored.
 - Member status (active / upcoming / expired / no_membership / inactive) is calculated from the dates every time, never stored, so it cannot go stale.
 - "Today" is today in the gym's timezone (`GYM_TIMEZONE`).
+
+## Billing rules
+- Assigning or renewing a plan creates an invoice in the same transaction. It starts as `pending`.
+- An invoice becomes `partial` or `paid` ONLY when payments are recorded; nothing is ever marked paid automatically.
+- Total = (price - discount) + tax. Tax comes from the `tax_percent` setting and is charged on the discounted price. All money is `Decimal`, rounded half-up to 2 places.
+- A free (0.00) membership creates no invoice.
+- Payments are manual entries (`verification_type = manual`); the API cannot create "verified online" payments. UPI, card and bank transfers need a reference number, and the same reference cannot be used twice.
+- Payments are never edited or deleted. Refunds are not supported yet, so a membership or invoice that has payments cannot be cancelled.
+- Receptionists can give at most 10% discount (setting `max_receptionist_discount_percent`); Admins have no limit.
+- Reports group by the gym's local dates, and CSV cells that start with `= + - @` are neutralised against spreadsheet formula injection.
 
 ## Who can see what
 - Receptionist: register and edit members, but never sees medical notes.

@@ -6,6 +6,7 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, field_validator, model_validator
 
+from app.schemas.billing import DiscountFields
 from app.schemas.common import (
     Gender, MemberStatus, Name, OptEmail, OptNotes, OptPhone, OptText120,
     OptText255, PhoneNumber, UTCDateTime,
@@ -25,7 +26,7 @@ def _check_birth_date(value: date) -> date:
 BirthDate = Optional[Annotated[date, AfterValidator(_check_birth_date)]]
 
 
-class MemberCreate(BaseModel):
+class MemberCreate(DiscountFields):
     model_config = ConfigDict(extra="forbid")
 
     full_name: Name
@@ -53,8 +54,12 @@ class MemberCreate(BaseModel):
 
     @model_validator(mode="after")
     def start_date_needs_plan(self):
-        if self.membership_start_date is not None and self.plan_id is None:
-            raise ValueError("membership_start_date needs a plan_id")
+        if self.plan_id is None and (
+            self.membership_start_date is not None
+            or self.discount_percent is not None
+            or self.discount_amount is not None
+        ):
+            raise ValueError("membership_start_date and discounts need a plan_id")
         return self
 
 

@@ -3,11 +3,12 @@ from datetime import date, timedelta
 from typing import Optional
 
 from sqlalchemy import exists, func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.exceptions import BadRequestError, ConflictError, NotFoundError
-from app.models import Member, Membership, MembershipPlan, User
+from app.models import Invoice, Member, Membership, MembershipPlan, User
 from app.schemas.membership import MembershipOut
+from app.services import invoice_service
 from app.services.audit_service import log_action
 from app.services.membership_rules import compute_end_date, membership_state
 from app.utils.dates import gym_today
@@ -16,12 +17,19 @@ MAX_DAYS_PAST = 365
 MAX_DAYS_FUTURE = 365
 
 
+def _current_invoice(m: Membership) -> Optional[Invoice]:
+    live = [i for i in m.invoices if i.status != "cancelled"]
+    return max(live, key=lambda i: i.id) if live else None
+
+
 def membership_out(m: Membership, today: date) -> MembershipOut:
+    invoice = _current_invoice(m)
     return MembershipOut(
         id=m.id, member_id=m.member_id, plan_id=m.plan_id, plan_name=m.plan.name,
         start_date=m.start_date, end_date=m.end_date,
         price_at_purchase=m.price_at_purchase, is_renewal=m.is_renewal,
         state=membership_state(m.start_date, m.end_date, m.status == "cancelled", today),
+        invoice=invoice_service.brief(invoice, today) if invoice is not None else None,
         created_at=m.created_at,
     )
 
@@ -64,6 +72,7 @@ def _overlaps_existing(db: Session, member_id: int, start: date, end: date) -> b
 def insert_membership(
     db: Session, member: Member, plan: MembershipPlan, start_date: Optional[date],
     actor: User, ip: Optional[str], *, action: str = "membership.create",
+    discount_amount=None, discount_percent=None,
 ) -> Membership:
     """Adds the membership to the CURRENT transaction (the caller commits)."""
     if member.status != "active":
@@ -89,6 +98,10 @@ def insert_membership(
     )
     db.add(membership)
     db.flush()
+    # The bill is created in the SAME transaction as the membership (all or nothing).
+    # It starts as 'pending': it only becomes 'paid' when payments are recorded.
+    invoice_service.create_for_membership(db, member, membership, plan, discount_amount,
+                                          discount_percent, actor, ip)
     log_action(db, user_id=actor.id, action=action, entity_type="membership",
                entity_id=membership.id,
                new={"member_id": member.id, "plan": plan.name, "start_date": start_date,
@@ -106,17 +119,18 @@ def _lock_member(db: Session, member_id: int) -> Member:
 
 
 def assign_plan(db: Session, member_id: int, plan_id: int, start_date: Optional[date],
-                actor: User, ip: Optional[str]) -> Membership:
+                actor: User, ip: Optional[str], *, discount_amount=None, discount_percent=None) -> Membership:
     member = _lock_member(db, member_id)
     plan = get_assignable_plan(db, plan_id)
-    membership = insert_membership(db, member, plan, start_date, actor, ip)
+    membership = insert_membership(db, member, plan, start_date, actor, ip,
+                                   discount_amount=discount_amount, discount_percent=discount_percent)
     db.commit()
     db.refresh(membership)
     return membership
 
 
 def renew(db: Session, member_id: int, plan_id: Optional[int], start_date: Optional[date],
-          actor: User, ip: Optional[str]) -> Membership:
+          actor: User, ip: Optional[str], *, discount_amount=None, discount_percent=None) -> Membership:
     member = _lock_member(db, member_id)
     if plan_id is None:
         last = db.scalar(
@@ -127,7 +141,8 @@ def renew(db: Session, member_id: int, plan_id: Optional[int], start_date: Optio
             raise BadRequestError("This member has no previous membership. Assign a plan instead")
         plan_id = last.plan_id
     plan = get_assignable_plan(db, plan_id)
-    membership = insert_membership(db, member, plan, start_date, actor, ip, action="membership.renew")
+    membership = insert_membership(db, member, plan, start_date, actor, ip, action="membership.renew",
+                                   discount_amount=discount_amount, discount_percent=discount_percent)
     db.commit()
     db.refresh(membership)
     return membership
@@ -135,7 +150,9 @@ def renew(db: Session, member_id: int, plan_id: Optional[int], start_date: Optio
 
 def list_for_member(db: Session, member_id: int) -> list[Membership]:
     stmt = (
-        select(Membership).options(joinedload(Membership.plan))
+        select(Membership)
+        .options(joinedload(Membership.plan),
+                 selectinload(Membership.invoices).selectinload(Invoice.payments))
         .where(Membership.member_id == member_id)
         .order_by(Membership.start_date.desc(), Membership.id.desc())
     )
@@ -148,6 +165,8 @@ def cancel(db: Session, member_id: int, membership_id: int, actor: User, ip: Opt
         raise NotFoundError("Membership not found")
     if membership.status == "cancelled":
         raise BadRequestError("This membership is already cancelled")
+    # Cancels the unpaid bill too. If money was already taken it refuses (no refunds yet).
+    invoice_service.cancel_for_membership(db, membership, actor, ip)
     membership.status = "cancelled"
     db.flush()
     log_action(db, user_id=actor.id, action="membership.cancel", entity_type="membership",

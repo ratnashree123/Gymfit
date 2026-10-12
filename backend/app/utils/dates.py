@@ -7,3 +7,7 @@ from app.config import get_settings
 
 def gym_today() -> date:
     return datetime.now(ZoneInfo(get_settings().gym_timezone)).date()
+
+
+def gym_tz() -> ZoneInfo:
+    return ZoneInfo(get_settings().gym_timezone)

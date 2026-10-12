@@ -97,7 +97,8 @@ def membership_history(member_id: int, db: Session = Depends(get_db), user: User
 def assign_plan(member_id: int, payload: AssignMembershipIn, request: Request,
                 db: Session = Depends(get_db), user: User = Depends(front_desk)):
     membership = membership_service.assign_plan(
-        db, member_id, payload.plan_id, payload.start_date, user, get_client_ip(request))
+        db, member_id, payload.plan_id, payload.start_date, user, get_client_ip(request),
+        discount_amount=payload.discount_amount, discount_percent=payload.discount_percent)
     return membership_service.membership_out(membership, gym_today())
 
 
@@ -105,7 +106,8 @@ def assign_plan(member_id: int, payload: AssignMembershipIn, request: Request,
 def renew_membership(member_id: int, payload: RenewMembershipIn, request: Request,
                      db: Session = Depends(get_db), user: User = Depends(front_desk)):
     membership = membership_service.renew(
-        db, member_id, payload.plan_id, payload.start_date, user, get_client_ip(request))
+        db, member_id, payload.plan_id, payload.start_date, user, get_client_ip(request),
+        discount_amount=payload.discount_amount, discount_percent=payload.discount_percent)
     return membership_service.membership_out(membership, gym_today())
 
 

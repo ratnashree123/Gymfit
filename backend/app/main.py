@@ -11,7 +11,7 @@ from app import models  # noqa: F401  (loads all models so relationships are con
 from app.config import get_settings
 from app.database import get_db
 from app.middleware.error_handlers import register_exception_handlers
-from app.routers import auth, members, plans, staff
+from app.routers import auth, invoices, members, payments, plans, reports, staff
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 
@@ -20,7 +20,7 @@ settings = get_settings()
 app = FastAPI(
     title=f"{settings.app_name} API",
     description="Gym Management System REST API",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 # Only the configured frontend origins may call this API from a browser.
@@ -38,6 +38,9 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(staff.router, prefix="/api")
 app.include_router(plans.router, prefix="/api")
 app.include_router(members.router, prefix="/api")
+app.include_router(invoices.router, prefix="/api")
+app.include_router(payments.router, prefix="/api")
+app.include_router(reports.router, prefix="/api")
 
 
 @app.get("/", tags=["System"])

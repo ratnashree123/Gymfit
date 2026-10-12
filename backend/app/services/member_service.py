@@ -256,7 +256,9 @@ def create_member(db: Session, data: MemberCreate, actor: User, ip: Optional[str
     db.flush()
     member.member_code = f"GF-{member.id:06d}"  # unique without any race between two receptionists
     if plan is not None:
-        membership_service.insert_membership(db, member, plan, data.membership_start_date, actor, ip)
+        membership_service.insert_membership(
+            db, member, plan, data.membership_start_date, actor, ip,
+            discount_amount=data.discount_amount, discount_percent=data.discount_percent)
     log_action(db, user_id=actor.id, action="member.create", entity_type="member",
                entity_id=member.id, new=_snapshot(member), ip=ip)
     db.commit()
