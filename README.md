@@ -8,6 +8,7 @@ A full-stack gym management web app built with FastAPI, MySQL, SQLAlchemy, and v
 - Phase 3: members (search, filters, soft delete, photos), membership plans, assign / renew / cancel memberships
 - Phase 4: invoices (discount + tax), manual payments with partial payments, receipts, revenue reports, CSV export
 - Phase 5: check-in / check-out, access rules, who is inside, forgotten check-outs, corrections with audit trail, attendance reports
+- Phase 6: equipment inventory, damage reports, maintenance jobs and history, reminders, repair costs, inventory report + CSV
 
 ## Tech Stack
 FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · Chart.js
@@ -63,6 +64,18 @@ FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · 
 | POST | `/api/attendance/close-stale` | Admin, Receptionist | Close visits nobody checked out |
 | PATCH | `/api/attendance/{id}` | Admin | Correct times (reason required, old values audited) |
 | POST | `/api/attendance/{id}/remove` | Admin | Remove a mistaken check-in (kept in the audit log) |
+| GET | `/api/equipment` | staff | Search, filter (category, status, condition, urgent / soon), sort, pages |
+| POST | `/api/equipment` | Admin | Add an item (code `EQ-0001`...) |
+| GET/PATCH | `/api/equipment/{id}` | staff read / Admin edit | Profile with next maintenance and repair costs (costs: Admin only) |
+| POST | `/api/equipment/{id}/archive` and `/restore` | Admin | Hide / show an item (nothing is ever deleted) |
+| POST | `/api/equipment/{id}/report-damage` | any staff | Flag a broken item; opens a repair job |
+| GET | `/api/equipment/categories` | staff | Existing categories for a dropdown |
+| GET | `/api/equipment/report` and `/export.csv` | Admin | Inventory report / CSV download |
+| POST | `/api/equipment/{id}/maintenance` | Admin | Schedule a routine, repair or inspection job |
+| GET | `/api/maintenance` and `/{id}` | Admin, Receptionist | Maintenance history (costs: Admin only) |
+| GET | `/api/maintenance/reminders` | Admin, Receptionist | Urgent (damaged / overdue) and soon-due equipment |
+| POST | `/api/maintenance/{id}/start`, `/complete`, `/cancel` | Admin | Move a job through its life cycle |
+| PATCH | `/api/maintenance/{id}` | Admin | Edit a scheduled or in-progress job |
 
 ## Membership rules
 - A membership is valid on its start and end date (both included): a 30-day plan starting 1 Jan ends 30 Jan.
@@ -88,6 +101,15 @@ FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · 
 - A visit still open after `auto_checkout_hours` (default 8) is a forgotten check-out: it is closed as `auto_closed` (the stay is capped at that many hours) the next time the member checks in, or by `close-stale`. Auto-closed visits are left out of the average stay.
 - Only an Admin can override a refused check-in (reason required) or correct / remove a record. Corrections are saved with the old values in `audit_logs`.
 - Times typed in a correction without an offset are read as the gym's local time; reports group by local dates (a 00:30 visit counts on the new day).
+
+## Equipment and maintenance rules
+- Equipment status is only `available`, `damaged` or `under_maintenance`. `under_maintenance` is never typed in: starting a job sets it, completing or cancelling a job moves it on. A completed repair makes the item available; a routine service on a broken item does not.
+- A job is `scheduled`, `in_progress`, `completed` or `cancelled`. Completed and cancelled jobs are locked history. There is no delete for equipment or maintenance: items are archived, jobs are cancelled.
+- A damage report (any staff member) marks the item damaged and opens a repair job so the Admin sees it in the reminders.
+- Urgent = damaged, or maintenance overdue. Soon = due within `maintenance_alert_days` (default 7) or in poor condition. The list filter and the reminders use the same rules.
+- Completing a job records the cost, sets `last_maintenance_date`, clears a next date that the job satisfied (or sets the date you give), and can update the condition.
+- `purchase_price` is the price of ONE item; the value of a record is price x quantity. Prices and costs are visible to Admins only.
+- If only one of several identical machines is broken, add it as its own record, because status belongs to the whole record.
 
 ## Who can see what
 - Receptionist: register and edit members, but never sees medical notes.

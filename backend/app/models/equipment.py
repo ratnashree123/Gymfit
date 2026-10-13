@@ -66,3 +66,4 @@ class EquipmentMaintenance(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     equipment: Mapped["Equipment"] = relationship(back_populates="maintenance_records")
+    creator: Mapped[Optional["User"]] = relationship(foreign_keys="EquipmentMaintenance.created_by")

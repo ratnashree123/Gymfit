@@ -262,3 +262,34 @@ def shift_visit(session_factory):
             db.commit()
 
     return _shift
+
+
+@pytest.fixture()
+def make_equipment(client, admin_headers):
+    """make_equipment(name="Bike", category="Cardio", quantity=2, ...) -> equipment dict"""
+    counter = {"n": 0}
+
+    def _make(**fields):
+        counter["n"] += 1
+        payload = {"name": f"Treadmill {counter['n']}", "category": "Cardio", **fields}
+        response = client.post("/api/equipment", headers=admin_headers, json=payload)
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    return _make
+
+
+@pytest.fixture()
+def make_job(client, admin_headers):
+    """make_job(equipment_id, kind="routine", days=0) -> maintenance job dict (days from today)"""
+    from datetime import timedelta
+    from app.utils.dates import gym_today
+
+    def _make(equipment_id, kind="routine", days=0, **fields):
+        scheduled = (gym_today() + timedelta(days=days)).isoformat()
+        response = client.post(f"/api/equipment/{equipment_id}/maintenance", headers=admin_headers,
+                               json={"maintenance_type": kind, "scheduled_date": scheduled, **fields})
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    return _make
