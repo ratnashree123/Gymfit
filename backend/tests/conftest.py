@@ -293,3 +293,13 @@ def make_job(client, admin_headers):
         return response.json()
 
     return _make
+
+
+@pytest.fixture()
+def second_trainer(client, admin_headers, login):
+    """A second trainer, to prove that trainers cannot see each other's members."""
+    response = client.post("/api/staff", headers=admin_headers, json={
+        "full_name": "Meera Nair", "email": "meera@gymfit.com", "password": "TrainerPass2",
+        "role": "Trainer", "phone": "9123456780", "specialization": "Yoga"})
+    assert response.status_code == 201, response.text
+    return response.json()["id"], login("meera@gymfit.com", "TrainerPass2")

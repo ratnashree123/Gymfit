@@ -72,3 +72,4 @@ class MemberProgress(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     member: Mapped["Member"] = relationship(back_populates="progress_records")
+    recorder: Mapped[Optional["User"]] = relationship(foreign_keys="MemberProgress.recorded_by")

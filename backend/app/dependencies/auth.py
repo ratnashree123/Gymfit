@@ -56,4 +56,5 @@ def require_roles(*allowed_roles: str):
 
 require_admin = require_roles(ROLE_ADMIN)
 require_front_desk = require_roles(ROLE_ADMIN, ROLE_RECEPTIONIST)  # money and member desk work
+require_fitness_staff = require_roles(ROLE_ADMIN, ROLE_TRAINER)  # workout plans and body measurements
 require_any_staff = require_roles(ROLE_ADMIN, ROLE_RECEPTIONIST, ROLE_TRAINER)

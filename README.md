@@ -9,6 +9,7 @@ A full-stack gym management web app built with FastAPI, MySQL, SQLAlchemy, and v
 - Phase 4: invoices (discount + tax), manual payments with partial payments, receipts, revenue reports, CSV export
 - Phase 5: check-in / check-out, access rules, who is inside, forgotten check-outs, corrections with audit trail, attendance reports
 - Phase 6: equipment inventory, damage reports, maintenance jobs and history, reminders, repair costs, inventory report + CSV
+- Phase 7: workout plans and exercises (by day and muscle group), fitness goals, body measurements, progress over time with BMI
 
 ## Tech Stack
 FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · Chart.js
@@ -76,6 +77,15 @@ FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · 
 | GET | `/api/maintenance/reminders` | Admin, Receptionist | Urgent (damaged / overdue) and soon-due equipment |
 | POST | `/api/maintenance/{id}/start`, `/complete`, `/cancel` | Admin | Move a job through its life cycle |
 | PATCH | `/api/maintenance/{id}` | Admin | Edit a scheduled or in-progress job |
+| GET/POST | `/api/workouts/plans` | Admin, Trainer (own members) | List / create a workout plan (optionally with exercises) |
+| GET/PATCH | `/api/workouts/plans/{id}` | Admin, Trainer (own members) | Plan with exercises grouped by day; edit, complete or archive |
+| POST | `/api/workouts/plans/{id}/exercises` and `/reorder` | Admin, Trainer (own members) | Add an exercise / change the order within a day |
+| PATCH/DELETE | `/api/workouts/exercises/{id}` | Admin, Trainer (own members) | Edit / remove an exercise |
+| GET | `/api/workouts/muscle-groups` | Admin, Trainer | Suggested muscle groups |
+| GET/POST | `/api/progress` | Admin, Trainer (own members) | Body measurements: list / record |
+| GET/PATCH/DELETE | `/api/progress/{id}` | Admin, Trainer (own members) | One record |
+| GET | `/api/progress/members/{id}/series` | Admin, Trainer (own members) | Chart-ready points with BMI and the change since the first record |
+| GET | `/api/progress/members/{id}/summary` | Admin, Trainer (own members) | Goal, active plan, first and latest record, BMI, changes |
 
 ## Membership rules
 - A membership is valid on its start and end date (both included): a 30-day plan starting 1 Jan ends 30 Jan.
@@ -110,6 +120,14 @@ FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · 
 - Completing a job records the cost, sets `last_maintenance_date`, clears a next date that the job satisfied (or sets the date you give), and can update the condition.
 - `purchase_price` is the price of ONE item; the value of a record is price x quantity. Prices and costs are visible to Admins only.
 - If only one of several identical machines is broken, add it as its own record, because status belongs to the whole record.
+
+## Workout and progress rules
+- Admins and Trainers only; a Trainer sees only the members assigned to them (anyone else's member answers 404). Receptionists have no access to workout or body data. If a member is reassigned, access moves to the new trainer.
+- A member has at most ONE active plan. Completing a plan closes it (end date = today). Completed and archived plans are read-only until set back to active. Plans are archived, never deleted.
+- An exercise has a day (1 to 7), a muscle group, and either sets AND reps or a duration. At most 30 exercises per day; `reorder` sets the order inside a day.
+- Every measurement is optional (voluntary), but a record cannot be empty and a member has at most one record per day. Values must be realistic (for example weight 20 to 400 kg).
+- BMI uses the latest known height, even if it was measured before the period you are looking at. It is an adult indicator, not a diagnosis.
+- Measurements can be erased. The audit log records only WHICH fields changed, never the values or notes.
 
 ## Who can see what
 - Receptionist: register and edit members, but never sees medical notes.
