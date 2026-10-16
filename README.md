@@ -10,6 +10,7 @@ A full-stack gym management web app built with FastAPI, MySQL, SQLAlchemy, and v
 - Phase 5: check-in / check-out, access rules, who is inside, forgotten check-outs, corrections with audit trail, attendance reports
 - Phase 6: equipment inventory, damage reports, maintenance jobs and history, reminders, repair costs, inventory report + CSV
 - Phase 7: workout plans and exercises (by day and muscle group), fitness goals, body measurements, progress over time with BMI
+- Phase 8: dashboard numbers and chart data, notifications, membership report + CSV
 
 ## Tech Stack
 FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · Chart.js
@@ -86,6 +87,11 @@ FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · 
 | GET/PATCH/DELETE | `/api/progress/{id}` | Admin, Trainer (own members) | One record |
 | GET | `/api/progress/members/{id}/series` | Admin, Trainer (own members) | Chart-ready points with BMI and the change since the first record |
 | GET | `/api/progress/members/{id}/summary` | Admin, Trainer (own members) | Goal, active plan, first and latest record, BMI, changes |
+| GET | `/api/dashboard` | all staff (shaped by role) | Every home-screen number, chart data and recent activity in one call |
+| GET | `/api/notifications` and `/unread-count` | all staff | Your own alerts / the bell counter |
+| POST | `/api/notifications/refresh`, `/read-all`, `/{id}/read` | all staff | Re-check now / mark as read |
+| GET | `/api/reports/memberships` | Admin, Receptionist | Members by status, plan, expiry date or join date, with whole-gym counts |
+| GET | `/api/reports/memberships/export.csv` | Admin | The same report as a CSV download |
 
 ## Membership rules
 - A membership is valid on its start and end date (both included): a 30-day plan starting 1 Jan ends 30 Jan.
@@ -128,6 +134,13 @@ FastAPI · SQLAlchemy · MySQL · Pydantic · PyJWT · bcrypt · HTML/CSS/JS · 
 - Every measurement is optional (voluntary), but a record cannot be empty and a member has at most one record per day. Values must be realistic (for example weight 20 to 400 kg).
 - BMI uses the latest known height, even if it was measured before the period you are looking at. It is an adult indicator, not a diagnosis.
 - Measurements can be erased. The audit log records only WHICH fields changed, never the values or notes.
+
+## Dashboard and notification rules
+- Every dashboard number comes from the database through the SAME rules as the other screens (`member_filters.py`), so the dashboard, the member list and the reports always agree. Tests check this.
+- Admin sees everything. A Receptionist sees everything except the revenue chart. A Trainer sees only the numbers of their own members, and no money or staff numbers.
+- Notifications are computed from the real data: expiring memberships, recently expired memberships (last 30 days), overdue invoices and equipment that is damaged, overdue or due soon. Each staff member has their own copy with their own read / unread state; Trainers only get the membership notices of their own members.
+- They clear themselves when the cause is gone (renewed, paid, repaired). There is no scheduler, so they refresh when opened (at most every 5 minutes) or with `POST /api/notifications/refresh`. An item that gets worse (soon becomes urgent) raises a new unread notification.
+- Reports have date-range filters and CSV downloads. Print-friendly pages are built from the same JSON on the website.
 
 ## Who can see what
 - Receptionist: register and edit members, but never sees medical notes.

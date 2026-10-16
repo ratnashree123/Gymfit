@@ -77,3 +77,56 @@ def export_csv(db: Session, date_from: date, date_to: date) -> str:
             "manual" if p.verification_type == "manual" else "verified online",
             p.reference_no, p.receiver.full_name if p.receiver else "")])
     return "\ufeff" + buffer.getvalue()  # BOM so Excel reads non-English names correctly
+
+
+# ================================================================== membership report
+MAX_REPORT_ROWS = 20000
+
+
+def _check_ranges(expires_from, expires_to, joined_from, joined_to) -> None:
+    if expires_from and expires_to and expires_to < expires_from:
+        raise BadRequestError("'expires_to' must not be before 'expires_from'")
+    if joined_from and joined_to and joined_to < joined_from:
+        raise BadRequestError("'joined_to' must not be before 'joined_from'")
+
+
+def membership_report(db: Session, user, *, status, plan_id, expires_from, expires_to, joined_from,
+                      joined_to, search, sort_by, order, page, page_size):
+    from app.models import Member
+    from app.services import member_filters, member_service, settings_service
+
+    _check_ranges(expires_from, expires_to, joined_from, joined_to)
+    items, total = member_service.list_members(
+        db, user, search=search, status=status, expiring_soon=False, trainer_id=None, deleted=False,
+        sort_by=sort_by, order=order, page=page, page_size=page_size, plan_id=plan_id,
+        expires_from=expires_from, expires_to=expires_to, joined_from=joined_from, joined_to=joined_to)
+    counts = member_filters.status_counts(
+        db, gym_today(), settings_service.get_int(db, "expiry_alert_days", 7), [Member.is_deleted.is_(False)])
+    return items, total, counts
+
+
+def export_memberships_csv(db: Session, user, **filters) -> str:
+    from app.services import member_service
+
+    _check_ranges(filters["expires_from"], filters["expires_to"], filters["joined_from"], filters["joined_to"])
+    members, page = [], 1
+    while True:
+        batch, total = member_service.list_members(db, user, expiring_soon=False, trainer_id=None, deleted=False,
+                                                   page=page, page_size=500, **filters)
+        if total > MAX_REPORT_ROWS:
+            raise BadRequestError(f"More than {MAX_REPORT_ROWS} rows. Narrow the filters")
+        members += batch
+        if len(members) >= total or not batch:
+            break
+        page += 1
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Member code", "Name", "Phone", "Email", "Registered", "Member status", "Membership status",
+                     "Plan", "Expires on", "Days left", "Trainer"])
+    for m in members:
+        writer.writerow([csv_safe(v) for v in (
+            m.member_code, m.full_name, m.phone, m.email, m.registration_date, m.status, m.membership_status,
+            m.plan_name, m.expires_on, m.days_left if m.days_left is not None else "",
+            m.assigned_trainer.full_name if m.assigned_trainer else "")])
+    return "\ufeff" + buffer.getvalue()

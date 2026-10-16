@@ -12,8 +12,8 @@ from app.config import get_settings
 from app.database import get_db
 from app.middleware.error_handlers import register_exception_handlers
 from app.routers import (
-    attendance, auth, equipment, invoices, maintenance, members, payments, plans, progress, reports,
-    staff, workouts,
+    attendance, auth, dashboard, equipment, invoices, maintenance, members, notifications, payments,
+    plans, progress, reports, staff, workouts,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
@@ -23,7 +23,7 @@ settings = get_settings()
 app = FastAPI(
     title=f"{settings.app_name} API",
     description="Gym Management System REST API",
-    version="0.7.0",
+    version="0.8.0",
 )
 
 # Only the configured frontend origins may call this API from a browser.
@@ -49,6 +49,8 @@ app.include_router(equipment.router, prefix="/api")
 app.include_router(maintenance.router, prefix="/api")
 app.include_router(workouts.router, prefix="/api")
 app.include_router(progress.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
+app.include_router(notifications.router, prefix="/api")
 
 
 @app.get("/", tags=["System"])

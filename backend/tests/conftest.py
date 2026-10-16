@@ -303,3 +303,12 @@ def second_trainer(client, admin_headers, login):
         "role": "Trainer", "phone": "9123456780", "specialization": "Yoga"})
     assert response.status_code == 201, response.text
     return response.json()["id"], login("meera@gymfit.com", "TrainerPass2")
+
+
+@pytest.fixture(autouse=True)
+def fast_notification_sync(monkeypatch):
+    """Notifications normally refresh at most every few minutes. Tests want every call to refresh."""
+    from app.services import notification_service
+    monkeypatch.setattr(notification_service, "MIN_INTERVAL", 0.0)
+    monkeypatch.setattr(notification_service, "FORCE_INTERVAL", 0.0)
+    notification_service.reset_throttle()

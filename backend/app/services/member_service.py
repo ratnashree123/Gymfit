@@ -1,6 +1,6 @@
 """Members: register, search, view, edit, soft-delete, photo."""
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Optional
 
 from sqlalchemy import and_, exists, func, not_, or_, select
@@ -10,7 +10,7 @@ from app.constants import ROLE_ADMIN, ROLE_TRAINER
 from app.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models import Member, Membership, StaffProfile, User
 from app.schemas.member import MemberCreate, MemberDetailOut, MemberListItem, MemberUpdate, TrainerRef
-from app.services import membership_service, photo_service, settings_service
+from app.services import member_filters, membership_service, photo_service, settings_service
 from app.services.audit_service import log_action
 from app.services.membership_rules import MembershipSummary, summarize
 from app.utils.dates import gym_today
@@ -154,34 +154,14 @@ def list_members(
     db: Session, user: User, *, search: Optional[str], status: Optional[str],
     expiring_soon: bool, trainer_id: Optional[int], deleted: bool,
     sort_by: str, order: str, page: int, page_size: int,
+    plan_id: Optional[int] = None, expires_from: Optional[date] = None, expires_to: Optional[date] = None,
+    joined_from: Optional[date] = None, joined_to: Optional[date] = None,
 ) -> tuple[list[MemberListItem], int]:
     if deleted and user.role.name != ROLE_ADMIN:
         raise ForbiddenError("Only an Admin can view deleted members")
 
     today = gym_today()
     alert_days = settings_service.get_int(db, "expiry_alert_days", 7)
-
-    # Reusable "does this member have ..." questions, asked inside SQL.
-    def has_any():
-        return exists().where(Membership.member_id == Member.id, Membership.status != "cancelled")
-
-    def covers_today():
-        return exists().where(
-            Membership.member_id == Member.id, Membership.status != "cancelled",
-            Membership.start_date <= today, Membership.end_date >= today,
-        )
-
-    def starts_later():
-        return exists().where(
-            Membership.member_id == Member.id, Membership.status != "cancelled",
-            Membership.start_date > today,
-        )
-
-    latest_end = (
-        select(func.max(Membership.end_date))
-        .where(Membership.member_id == Member.id, Membership.status != "cancelled")
-        .scalar_subquery()
-    )
 
     conditions = [Member.is_deleted.is_(deleted)]
 
@@ -201,23 +181,23 @@ def list_members(
             Member.member_code.ilike(pattern, escape="\\"),
         ))
 
-    is_active_member = Member.status == "active"
-    if status == "inactive":
-        conditions.append(Member.status == "inactive")
-    elif status == "active":
-        conditions += [is_active_member, covers_today()]
-    elif status == "upcoming":
-        conditions += [is_active_member, not_(covers_today()), starts_later()]
-    elif status == "expired":
-        conditions += [is_active_member, not_(covers_today()), not_(starts_later()), has_any()]
-    elif status == "no_membership":
-        conditions += [is_active_member, not_(has_any())]
-
+    conditions += member_filters.status_conditions(status, today)
     if expiring_soon:
-        conditions += [
-            is_active_member, covers_today(),
-            latest_end >= today, latest_end <= today + timedelta(days=alert_days),
-        ]
+        conditions += member_filters.expiring_conditions(today, alert_days)
+
+    # filters used by the membership report
+    if plan_id is not None:
+        conditions.append(member_filters.latest_plan_id() == plan_id)
+    if expires_from is not None or expires_to is not None:
+        ends = member_filters.latest_end()
+        if expires_from is not None:
+            conditions.append(ends >= expires_from)   # members without a membership drop out (NULL)
+        if expires_to is not None:
+            conditions.append(ends <= expires_to)
+    if joined_from is not None:
+        conditions.append(Member.registration_date >= joined_from)
+    if joined_to is not None:
+        conditions.append(Member.registration_date <= joined_to)
 
     total = db.scalar(select(func.count(Member.id)).where(and_(*conditions))) or 0
 
@@ -232,6 +212,11 @@ def list_members(
     members = list(db.scalars(stmt).all())
     summaries = _summaries(db, members)
     return [list_item_out(m, summaries[m.id]) for m in members], total
+
+
+def summaries(db: Session, members: list[Member]) -> dict[int, MembershipSummary]:
+    """Public name for the membership summary of each member (plan, expiry date, days left ...)."""
+    return _summaries(db, members)
 
 
 # ----------------------------------------------------------------- writing
